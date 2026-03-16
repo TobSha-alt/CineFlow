@@ -259,17 +259,6 @@
 
   <script>
     window.open = () => null;
-    window.addEventListener('click', e => {
-      const a = e.target.closest('a[href]');
-      if (a && a.href && !a.href.startsWith(location.origin) && !a.href.startsWith('javascript')) {
-        e.preventDefault(); e.stopPropagation();
-      }
-    }, true);
-    const _origAssign = location.assign.bind(location);
-    Object.defineProperty(window, 'location', {
-      get: () => ({ ...location, assign: () => {}, replace: () => {}, href: location.href }),
-      set: () => {}
-    });
 
     const TMDB_API_KEY = '04c35731a5ee918f014970082a0088b1';
     const POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
