@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineFlow – Streaming Prototype</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:Arial,Helvetica,sans-serif; }
+    body { background:#141414; color:#fff; overflow-x:hidden; }
+    .navbar {
+      position:fixed; top:0; width:100%; padding:15px 50px;
+      display:flex; justify-content:space-between; align-items:center;
+      background:linear-gradient(to bottom,rgba(0,0,0,.8),transparent); z-index:1000;
+    }
+    .logo-area { display:flex; align-items:center; gap:30px; }
+    .logo { font-size:26px; font-weight:bold; color:#e50914; }
+    .auth-btn {
+      color:#fff; font-size:14px; cursor:pointer; padding:8px 16px;
+      border:1px solid #e50914; border-radius:4px; background:transparent;
+      transition:background 0.3s;
+    }
+    .auth-btn:hover { background:rgba(229,9,20,0.2); }
+    .row { margin-top:30px; padding:0 50px; display:none; position:relative; }
+    .row.visible { display:block; }
+    .row-posters { display:flex; overflow-x:auto; gap:15px; padding-bottom:20px; }
+    .row-posters::-webkit-scrollbar { display:none; }
+    .poster-container {
+      min-width:200px; width:200px; cursor:pointer; text-align:center;
+      transition:transform 0.4s cubic-bezier(0.165,0.84,0.44,1); position:relative;
+    }
+    .poster-container:hover { transform:scale(1.09); }
+    .poster { height:300px; background-size:cover; background-position:center; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
+    .poster-title { margin-top:8px; font-size:14px; font-weight:600; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .remove-icon {
+      position:absolute; top:8px; right:8px; background:#e50914; color:white;
+      width:28px; height:28px; border-radius:50%; line-height:28px; text-align:center;
+      font-size:18px; font-weight:bold; cursor:pointer; z-index:5;
+      opacity:0; transition:opacity 0.2s;
+      box-shadow:0 2px 6px rgba(0,0,0,0.5);
+    }
+    .poster-container:hover .remove-icon { opacity:1; }
+    .remove-icon:hover { background:#ff3333; }
+    .section-title {
+      font-size:22px; font-weight:bold; margin:100px 0 0;
+      padding-left:50px; color:#e50914;
+    }
+    #favouritesRow {
+      margin-top:10px; padding:0 50px; min-height:340px;
+    }
+    #favouritesRow .row-posters:empty::after {
+      content:"Nothing here yet";
+      display:block; color:#777; font-size:18px; text-align:center; margin-top:140px;
+    }
+    .tab-content { padding-top:80px; }
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:2000; justify-content:center; align-items:center; padding:20px; overflow-y:auto; }
+    .modal-content { width:90%; max-width:1000px; background:#1a1a1a; border-radius:12px; padding:30px; position:relative; }
+    .close-btn {
+      position:absolute; top:0; right:0; background:rgba(0,0,0,0.4); border:none;
+      color:white; font-size:22px; cursor:pointer; z-index:10;
+      width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+      border-radius:0 12px 0 8px; transition:background 0.2s;
+    }
+    .close-btn:hover { background:#e50914; }
+    #authModal .modal-content { max-width:500px; text-align:center; }
+    .tab-buttons { display:flex; margin-bottom:20px; }
+    .tab-btn { flex:1; padding:12px; background:#333; color:white; border:none; cursor:pointer; font-size:16px; }
+    .tab-btn.active { background:#e50914; }
+    form { display:none; }
+    form.active { display:block; }
+    input { width:100%; padding:12px; margin:10px 0; border:none; border-radius:4px; font-size:16px; }
+    button[type="submit"] { width:100%; padding:12px; background:#e50914; border:none; color:white; font-size:16px; border-radius:4px; cursor:pointer; }
+    #authStatus { margin:20px 0; font-size:16px; }
+    #logoutBtn { margin-top:15px; padding:10px 20px; background:#e50914; border:none; color:white; border-radius:4px; cursor:pointer; font-size:15px; }
+    #seasonList { display:flex; gap:10px; margin:20px 0; overflow-x:auto; padding-bottom:10px; }
+    .season-btn { padding:10px 20px; background:#333; border:none; color:white; border-radius:20px; cursor:pointer; white-space:nowrap; transition:background 0.2s; }
+    .season-btn.active { background:#e50914; }
+    #episodeGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:15px; }
+    .episode-card { background:#222; border-radius:8px; padding:10px; text-align:center; cursor:pointer; transition:background 0.2s; }
+    .episode-card:hover { background:#444; }
+    .episode-num { font-size:18px; font-weight:bold; margin-bottom:5px; }
+    .episode-name { font-size:12px; color:#ddd; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .episode-air { font-size:11px; color:#aaa; }
+    #videasyPlayer { width:100%; height:460px; border:none; border-radius:8px; background:#000; }
+    #videoModal .close-btn { position:fixed; top:12px; right:12px; border-radius:8px; z-index:2100; }
+    #videoTitle { margin:15px 0; font-size:24px; text-align:center; }
+    #loadingOverlay { position:absolute; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; color:white; font-size:20px; z-index:10; }
+    .search-form { display:flex; align-items:center; }
+    .search-form input { padding:8px 12px; border:none; border-radius:4px 0 0 4px; font-size:14px; width:220px; height:36px; box-sizing:border-box; }
+    .search-form button { padding:8px 16px; border:none; background:#e50914; color:white; border-radius:0 4px 4px 0; cursor:pointer; font-size:14px; height:36px; box-sizing:border-box; }
+    #welcomeOverlay {
+      position:fixed; inset:0; background:#000; z-index:3000; display:flex; flex-direction:column;
+      justify-content:center; align-items:center; opacity:0; transition:opacity 1s ease;
+    }
+    #welcomeOverlay.show { opacity:1; }
+    #welcomeOverlay h1 { font-size:120px; color:#e50914; text-shadow:0 0 30px rgba(229,9,20,0.8); animation:fadeIn 2s ease-out; }
+    #welcomeText { font-size:48px; margin-top:20px; color:#fff; opacity:0; animation:fadeIn 2s ease-out 1s forwards; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    #welcomeOverlay.fade-out { opacity:0; pointer-events:none; transition:opacity 1.5s ease; }
+    #adWarningModal .modal-content { max-width:540px; text-align:center; padding:40px 32px; }
+    #adWarningModal h2 { margin-bottom:20px; }
+    #adWarningModal p { font-size:1.05rem; line-height:1.55; margin:16px 0 24px; }
+    #adWarningModal .dont-show-again { margin-top:20px; color:#aaa; font-size:0.95rem; }
+    .navlinks { display:flex; align-items:center; gap:25px; }
+    .navlinks a { color:#fff; text-decoration:none; font-size:14px; opacity:.85; cursor:pointer; }
+    .navlinks a:hover { opacity:1; }
+    .navlinks a.active { opacity:1; font-weight:bold; border-bottom:2px solid #e50914; padding-bottom:4px; }
+    .recently-watched-empty { color:#777; font-size:18px; text-align:center; padding:80px 50px; }
+    footer { margin-top:60px; text-align:center; color:#777; padding:40px; }
+  </style>
+</head>
+<body>
+  <div id="welcomeOverlay">
+    <h1>CineFlow</h1>
+    <div id="welcomeText">Welcome back, <span id="welcomeName">Guest</span></div>
+  </div>
+
+  <div class="navbar">
+    <div class="logo-area">
+      <div class="logo">CineFlow</div>
+      <button class="auth-btn" id="authButton">Sign In / Sign Up</button>
+    </div>
+    <div class="navlinks">
+      <a id="navHome" class="active" onclick="showAll()">Home</a>
+      <a id="navMovies" onclick="filterContent('movie')">Movies</a>
+      <a id="navTV" onclick="filterContent('tv')">TV Shows</a>
+      <a id="navRecent" onclick="showRecent()">Recently Watched</a>
+      <form id="searchForm" class="search-form">
+        <input type="text" id="searchInput" placeholder="Search movies & TV..." required>
+        <button type="submit">Search</button>
+      </form>
+    </div>
+  </div>
+
+  <h2 class="section-title" id="favouritesTitle">Favourites</h2>
+  <div id="favouritesRow" class="row">
+    <div class="row-posters" id="favouritesPosters"></div>
+  </div>
+
+  <div id="homeTabContent" class="tab-content" style="display:none;">
+    <div class="row visible"><div class="row-posters" id="homeRow1"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow2"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow3"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow4"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow5"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow6"></div></div>
+    <div class="row visible"><div class="row-posters" id="homeRow7"></div></div>
+  </div>
+
+  <div id="moviesTabContent" class="tab-content" style="display:none;">
+    <div class="row visible"><div class="row-posters" id="movRow1"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow2"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow3"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow4"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow5"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow6"></div></div>
+    <div class="row visible"><div class="row-posters" id="movRow7"></div></div>
+  </div>
+
+  <div id="tvTabContent" class="tab-content" style="display:none;">
+    <div class="row visible"><div class="row-posters" id="tvRow1"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow2"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow3"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow4"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow5"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow6"></div></div>
+    <div class="row visible"><div class="row-posters" id="tvRow7"></div></div>
+  </div>
+
+  <div id="recentTabContent" class="tab-content" style="display:none;">
+    <div class="row visible" id="recentRow">
+      <div class="row-posters" id="recentPosters"></div>
+    </div>
+    <div id="recentEmpty" class="recently-watched-empty" style="display:none;">Nothing watched yet — start exploring!</div>
+  </div>
+
+  <div id="searchResultsRow" style="display:none; padding:100px 50px 0;">
+    <h2 id="searchResultsTitle">Search Results</h2>
+    <div class="row-posters" id="searchResults" style="margin-top:20px;"></div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div id="authModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeAuthModal()">×</button>
+      <div id="authStatus" style="display:none;">
+        <p id="loggedInText"></p>
+        <button id="logoutBtn">Log Out</button>
+      </div>
+      <div id="authForms">
+        <div class="tab-buttons">
+          <button class="tab-btn active" onclick="switchTab('signup')">Sign Up</button>
+          <button class="tab-btn" onclick="switchTab('login')">Log In</button>
+        </div>
+        <form id="signupForm" class="active">
+          <input type="text" id="signupUsername" placeholder="Username" required>
+          <input type="password" id="signupPassword" placeholder="Password" required>
+          <button type="submit">Create Account</button>
+        </form>
+        <form id="loginForm">
+          <input type="text" id="loginUsername" placeholder="Username" required>
+          <input type="password" id="loginPassword" placeholder="Password" required>
+          <button type="submit">Log In</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Video Modal -->
+  <div id="videoModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeVideo()">×</button>
+      <div style="position:relative;">
+        <div id="loadingOverlay">Loading stream...</div>
+        <iframe id="videasyPlayer" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock"></iframe>
+      </div>
+      <h2 id="videoTitle"></h2>
+      <button id="switchStreamBtn" style="margin:10px auto; display:none; padding:10px 20px; background:#e50914; border:none; color:white; border-radius:6px; cursor:pointer; font-size:16px;">Switch to CinemaOS</button>
+      <button id="addToHomeBtn" style="margin:15px auto; display:block; padding:10px 20px; background:#e50914; border:none; color:white; border-radius:6px; cursor:pointer; font-size:16px;">Favourite Movie</button>
+    </div>
+  </div>
+
+  <!-- Info Modal -->
+  <div id="infoModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeInfoModal()">×</button>
+      <p>CineFlow is an AI powered TV Show and Film streaming site coded by Toby (our CEO from Malta) in 2026 as a short term project. We soon hope our platform will be used daily around the world.</p>
+    </div>
+  </div>
+
+  <!-- Episode Selector -->
+  <div id="episodeSelectorModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeSelector()">×</button>
+      <h2 id="selectorTitle">Select Season & Episode</h2>
+      <div id="seasonList"></div>
+      <div id="episodeGrid"></div>
+      <div style="margin-top:20px; text-align:center;">
+        <button id="favouriteSeriesBtn" style="padding:12px 24px; background:#e50914; border:none; color:white; border-radius:6px; cursor:pointer; font-size:16px;">Favourite Series</button>
+        <button id="playLatestBtn" style="margin-left:10px; padding:12px 24px; background:#e50914; border:none; color:white; border-radius:6px; cursor:pointer; font-size:16px;">Play Latest Episode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ad Warning Modal -->
+  <div id="adWarningModal" class="modal">
+    <div class="modal-content">
+      <button class="close-btn" onclick="closeAdWarning()">×</button>
+      <h2>Important Notice</h2>
+      <p>Any <strong>ads, pop-ups, banners or redirects</strong> you see during playback come directly from the external streaming provider (<strong>Videasy</strong>, <strong>CinemaOS</strong>, or similar services) — <strong>not from CineFlow</strong>.</p>
+      <p>CineFlow does not control, display, or benefit from these advertisements. Simply close any unwanted windows and the video should continue playing normally.</p>
+      <button onclick="proceedAfterWarning()" style="margin-top:24px; padding:12px 40px; background:#e50914; border:none; color:white; font-size:1.1rem; border-radius:6px; cursor:pointer;">Got it – Continue</button>
+      <div class="dont-show-again">
+        <label style="cursor:pointer;"><input type="checkbox" id="neverShowAdWarningAgain"> Don't show this message again</label>
+      </div>
+    </div>
+  </div>
+
+  <footer>CineFlow Prototype • Powered by Videasy.net & CinemaOS & TMDB • For demo use only</footer>
+
+  <script>
+    window.open = () => null;
+    window.addEventListener('click', e => {
+      const a = e.target.closest('a[href]');
+      if (a && a.href && !a.href.startsWith(location.origin) && !a.href.startsWith('javascript')) {
+        e.preventDefault(); e.stopPropagation();
+      }
+    }, true);
+    const _origAssign = location.assign.bind(location);
+    Object.defineProperty(window, 'location', {
+      get: () => ({ ...location, assign: () => {}, replace: () => {}, href: location.href }),
+      set: () => {}
+    });
+
+    const TMDB_API_KEY = '04c35731a5ee918f014970082a0088b1';
+    const POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
+    const FALLBACK_POSTER = 'https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-basic-38-picture-grey-c2ebdbb057f2a7614185931650f8cee23fa137b93812ccb132b9df511df1cfac.svg';
+    let currentTvId = null, currentTvTitle = null, currentTvPoster = null;
+    let seasonsData = [];
+    let currentVideoItem = null, currentStreamSource = 'videasy';
+    let currentSeason = 1, currentEpisode = 1;
+    let pendingPlayCallback = null;
+    let currentTab = 'home';
+
+    function hasSeenAdWarning() { return localStorage.getItem('cineflow_seen_ad_warning') === 'true'; }
+    function setHasSeenAdWarning() { localStorage.setItem('cineflow_seen_ad_warning', 'true'); }
+    function closeAdWarning() {
+      document.getElementById('adWarningModal').style.display = 'none';
+      document.body.style.overflow = '';
+      pendingPlayCallback = null;
+    }
+    function proceedAfterWarning() {
+      if (document.getElementById('neverShowAdWarningAgain').checked) setHasSeenAdWarning();
+      document.getElementById('adWarningModal').style.display = 'none';
+      document.body.style.overflow = '';
+      if (pendingPlayCallback) { pendingPlayCallback(); pendingPlayCallback = null; }
+    }
+
+    function createPosterElement(item) {
+      const cont = document.createElement('div');
+      cont.className = 'poster-container';
+      const poster = document.createElement('div');
+      poster.className = 'poster';
+      poster.style.backgroundImage = `url(${item.poster || FALLBACK_POSTER})`;
+      const title = document.createElement('div');
+      title.className = 'poster-title';
+      title.textContent = item.title || item.name || 'Unknown';
+      cont.appendChild(poster);
+      cont.appendChild(title);
+      cont.title = title.textContent;
+      cont.addEventListener('click', () => {
+        const type = item.media_type || item.type || (item.title ? 'movie' : 'tv');
+        const startPlayback = () => {
+          if (type === 'tv') openEpisodeSelector(item.id, title.textContent, item.poster);
+          else showVideo('movie', item.id, title.textContent, item.poster);
+        };
+        if (hasSeenAdWarning()) startPlayback();
+        else { pendingPlayCallback = startPlayback; document.getElementById('adWarningModal').style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+      });
+      return cont;
+    }
+
+    function shuffleArray(array) {
+      const copy = [...array];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function renderPosters(containerId, items) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      let shuffled = shuffleArray(items);
+      const rotateBy = Math.floor(Math.random() * Math.min(6, shuffled.length));
+      if (rotateBy > 0) shuffled = shuffled.slice(rotateBy).concat(shuffled.slice(0, rotateBy));
+      shuffled.slice(0, 12).forEach(item => container.appendChild(createPosterElement(item)));
+    }
+
+    function mapMovie(m) { return { title: m.title, id: m.id, type: 'movie', poster: m.poster_path ? `${POSTER_BASE}${m.poster_path}` : FALLBACK_POSTER }; }
+    function mapTV(s) { return { name: s.name, id: s.id, type: 'tv', poster: s.poster_path ? `${POSTER_BASE}${s.poster_path}` : FALLBACK_POSTER }; }
+
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      return res.json();
+    }
+
+    async function fetchMixedRow(rowId, movieUrl, tvUrl) {
+      try {
+        const [md, td] = await Promise.all([fetchJSON(movieUrl), fetchJSON(tvUrl)]);
+        const movies = (md.results || []).slice(0, 10).map(mapMovie);
+        const shows = (td.results || []).slice(0, 10).map(mapTV);
+        const merged = [];
+        const max = Math.max(movies.length, shows.length);
+        for (let i = 0; i < max; i++) {
+          if (movies[i]) merged.push(movies[i]);
+          if (shows[i]) merged.push(shows[i]);
+        }
+        renderPosters(rowId, merged);
+      } catch(e) { console.error(e); }
+    }
+
+    async function fetchMovieRow(rowId, url) {
+      try {
+        const data = await fetchJSON(url);
+        renderPosters(rowId, (data.results || []).map(mapMovie));
+      } catch(e) { console.error(e); }
+    }
+
+    async function fetchTVRow(rowId, url) {
+      try {
+        const data = await fetchJSON(url);
+        renderPosters(rowId, (data.results || []).map(mapTV));
+      } catch(e) { console.error(e); }
+    }
+
+    const BASE = `https://api.themoviedb.org/3`;
+    const K = `api_key=${TMDB_API_KEY}`;
+
+    function loadHomeRows() {
+      fetchMixedRow('homeRow1', `${BASE}/trending/movie/week?${K}`,       `${BASE}/trending/tv/week?${K}`);
+      fetchMixedRow('homeRow2', `${BASE}/movie/popular?${K}&page=1`,       `${BASE}/tv/popular?${K}&page=1`);
+      fetchMixedRow('homeRow3', `${BASE}/movie/top_rated?${K}&page=1`,     `${BASE}/tv/top_rated?${K}&page=1`);
+      fetchMixedRow('homeRow4', `${BASE}/movie/now_playing?${K}&page=1`,   `${BASE}/tv/on_the_air?${K}&page=1`);
+      fetchMixedRow('homeRow5', `${BASE}/movie/upcoming?${K}&page=1`,      `${BASE}/tv/airing_today?${K}&page=1`);
+      fetchMixedRow('homeRow6', `${BASE}/discover/movie?${K}&with_genres=28&page=1`, `${BASE}/discover/tv?${K}&with_genres=18&page=1`);
+      fetchMixedRow('homeRow7', `${BASE}/discover/movie?${K}&with_genres=35&page=1`, `${BASE}/discover/tv?${K}&with_genres=10765&page=1`);
+    }
+
+    function loadMovieRows() {
+      fetchMovieRow('movRow1', `${BASE}/movie/popular?${K}&page=1`);
+      fetchMovieRow('movRow2', `${BASE}/movie/top_rated?${K}&page=1`);
+      fetchMovieRow('movRow3', `${BASE}/movie/now_playing?${K}&page=1`);
+      fetchMovieRow('movRow4', `${BASE}/movie/upcoming?${K}&page=1`);
+      fetchMovieRow('movRow5', `${BASE}/discover/movie?${K}&with_genres=28&page=1`);
+      fetchMovieRow('movRow6', `${BASE}/discover/movie?${K}&with_genres=35&page=1`);
+      fetchMovieRow('movRow7', `${BASE}/discover/movie?${K}&with_genres=53&page=1`);
+    }
+
+    function loadTVRows() {
+      fetchTVRow('tvRow1', `${BASE}/tv/popular?${K}&page=1`);
+      fetchTVRow('tvRow2', `${BASE}/tv/top_rated?${K}&page=1`);
+      fetchTVRow('tvRow3', `${BASE}/tv/on_the_air?${K}&page=1`);
+      fetchTVRow('tvRow4', `${BASE}/tv/airing_today?${K}&page=1`);
+      fetchTVRow('tvRow5', `${BASE}/discover/tv?${K}&with_genres=18&page=1`);
+      fetchTVRow('tvRow6', `${BASE}/discover/tv?${K}&with_genres=35&page=1`);
+      fetchTVRow('tvRow7', `${BASE}/discover/tv?${K}&with_genres=10765&page=1`);
+    }
+
+    function getCurrentUser() { return localStorage.getItem('currentUser') || 'guest'; }
+    function getFavouritesKey() { return `cineflow_favourites_${getCurrentUser()}`; }
+    function getRecentKey() { return `cineflow_recent_${getCurrentUser()}`; }
+    function isFavourite(type, id) {
+      return JSON.parse(localStorage.getItem(getFavouritesKey()) || '[]').some(f => f.type === type && f.id === id);
+    }
+
+    function renderFavourites() {
+      const container = document.getElementById('favouritesPosters');
+      const favs = JSON.parse(localStorage.getItem(getFavouritesKey()) || '[]');
+      document.getElementById('favouritesTitle').style.display = 'block';
+      document.getElementById('favouritesRow').style.display = 'block';
+      container.innerHTML = '';
+      favs.forEach(item => {
+        const cont = document.createElement('div');
+        cont.className = 'poster-container';
+        const removeBtn = document.createElement('div');
+        removeBtn.className = 'remove-icon';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = (e) => { e.stopPropagation(); addToFavourites(item.type, item.id, item.title, item.poster); };
+        cont.appendChild(removeBtn);
+        const poster = document.createElement('div');
+        poster.className = 'poster';
+        poster.style.backgroundImage = `url(${item.poster})`;
+        const titleEl = document.createElement('div');
+        titleEl.className = 'poster-title';
+        titleEl.textContent = item.title;
+        cont.appendChild(poster);
+        cont.appendChild(titleEl);
+        cont.onclick = () => {
+          if (item.type === 'tv') openEpisodeSelector(item.id, item.title, item.poster);
+          else showVideo(item.type, item.id, item.title, item.poster);
+        };
+        container.appendChild(cont);
+      });
+    }
+
+    function saveToRecent(type, id, title, poster, season = null, episode = null) {
+      const key = getRecentKey();
+      let recent = JSON.parse(localStorage.getItem(key) || '[]');
+      recent = recent.filter(r => !(r.id === id && r.type === type));
+      recent.unshift({ type, id, title, poster, season, episode });
+      if (recent.length > 20) recent = recent.slice(0, 20);
+      localStorage.setItem(key, JSON.stringify(recent));
+      if (currentTab === 'recent') renderRecent();
+    }
+
+    function removeFromRecent(type, id) {
+      const key = getRecentKey();
+      let recent = JSON.parse(localStorage.getItem(key) || '[]');
+      recent = recent.filter(r => !(r.id === id && r.type === type));
+      localStorage.setItem(key, JSON.stringify(recent));
+      renderRecent();
+    }
+
+    function renderRecent() {
+      const container = document.getElementById('recentPosters');
+      const row = document.getElementById('recentRow');
+      const empty = document.getElementById('recentEmpty');
+      container.innerHTML = '';
+      const recent = JSON.parse(localStorage.getItem(getRecentKey()) || '[]');
+      if (recent.length === 0) {
+        row.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      row.style.display = 'block';
+      empty.style.display = 'none';
+      recent.forEach(item => {
+        const cont = document.createElement('div');
+        cont.className = 'poster-container';
+        const removeBtn = document.createElement('div');
+        removeBtn.className = 'remove-icon';
+        removeBtn.textContent = '×';
+        removeBtn.onclick = (e) => { e.stopPropagation(); removeFromRecent(item.type, item.id); };
+        cont.appendChild(removeBtn);
+        const poster = document.createElement('div');
+        poster.className = 'poster';
+        poster.style.backgroundImage = `url(${item.poster || FALLBACK_POSTER})`;
+        const titleEl = document.createElement('div');
+        titleEl.className = 'poster-title';
+        titleEl.textContent = item.title;
+        const subtitle = document.createElement('div');
+        subtitle.style.cssText = 'font-size:12px; color:#aaa;';
+        subtitle.textContent = item.type === 'tv' && item.season ? `S${item.season}E${item.episode}` : '';
+        cont.appendChild(poster);
+        cont.appendChild(titleEl);
+        if (subtitle.textContent) cont.appendChild(subtitle);
+        cont.onclick = () => {
+          if (item.type === 'tv') openEpisodeSelector(item.id, item.title, item.poster);
+          else showVideo(item.type, item.id, item.title, item.poster);
+        };
+        container.appendChild(cont);
+      });
+    }
+
+    function hideAllTabContent() {
+      document.getElementById('homeTabContent').style.display = 'none';
+      document.getElementById('moviesTabContent').style.display = 'none';
+      document.getElementById('tvTabContent').style.display = 'none';
+      document.getElementById('recentTabContent').style.display = 'none';
+      document.getElementById('searchResultsRow').style.display = 'none';
+    }
+
+    function showAll() {
+      currentTab = 'home';
+      hideAllTabContent();
+      document.getElementById('homeTabContent').style.display = 'block';
+      document.querySelectorAll('.navlinks a').forEach(a => a.classList.remove('active'));
+      document.getElementById('navHome').classList.add('active');
+      loadHomeRows();
+      renderFavourites();
+    }
+
+    function filterContent(type) {
+      hideAllTabContent();
+      document.querySelectorAll('.navlinks a').forEach(a => a.classList.remove('active'));
+      if (type === 'movie') {
+        currentTab = 'movie';
+        document.getElementById('navMovies').classList.add('active');
+        document.getElementById('moviesTabContent').style.display = 'block';
+        loadMovieRows();
+      } else if (type === 'tv') {
+        currentTab = 'tv';
+        document.getElementById('navTV').classList.add('active');
+        document.getElementById('tvTabContent').style.display = 'block';
+        loadTVRows();
+      } else if (type === 'recent') {
+        currentTab = 'recent';
+        document.getElementById('navRecent').classList.add('active');
+        document.getElementById('recentTabContent').style.display = 'block';
+        renderRecent();
+      }
+      renderFavourites();
+    }
+
+    function showRecent() { filterContent('recent'); }
+
+    function updateAuthUI() {
+      const user = localStorage.getItem('currentUser');
+      document.getElementById('authButton').textContent = user || 'Sign In / Sign Up';
+      const statusDiv = document.getElementById('authStatus');
+      const formsDiv = document.getElementById('authForms');
+      if (user) {
+        statusDiv.style.display = 'block'; formsDiv.style.display = 'none';
+        document.getElementById('loggedInText').textContent = `Logged in as ${user}`;
+      } else {
+        statusDiv.style.display = 'none'; formsDiv.style.display = 'block';
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('currentUser');
+      updateAuthUI(); closeAuthModal();
+      document.getElementById('welcomeName').textContent = 'Guest';
+      renderFavourites();
+    }
+
+    function showAuthModal() { updateAuthUI(); document.getElementById('authModal').style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+    function closeAuthModal() { document.getElementById('authModal').style.display = 'none'; document.body.style.overflow = ''; }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('signupForm').classList.toggle('active', tab === 'signup');
+      document.getElementById('loginForm').classList.toggle('active', tab === 'login');
+    }
+
+    document.getElementById('signupForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const u = document.getElementById('signupUsername').value.trim();
+      const p = document.getElementById('signupPassword').value;
+      if (!u || !p) return alert('Fill all fields');
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      if (users[u]) return alert('Username taken');
+      users[u] = p;
+      localStorage.setItem('users', JSON.stringify(users));
+      localStorage.setItem('currentUser', u);
+      updateAuthUI(); alert('Account created! You are now logged in.'); closeAuthModal(); renderFavourites();
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const u = document.getElementById('loginUsername').value.trim();
+      const p = document.getElementById('loginPassword').value;
+      const users = JSON.parse(localStorage.getItem('users') || '{}');
+      if (users[u] && users[u] === p) {
+        localStorage.setItem('currentUser', u);
+        updateAuthUI(); alert('Logged in successfully!'); closeAuthModal(); renderFavourites();
+      } else { alert('Invalid username or password'); }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    function showWelcome() {
+      const ov = document.getElementById('welcomeOverlay');
+      ov.classList.add('show');
+      document.getElementById('welcomeName').textContent = getCurrentUser() === 'guest' ? 'Guest' : getCurrentUser();
+      setTimeout(() => {
+        ov.classList.add('fade-out');
+        setTimeout(() => { ov.style.display = 'none'; renderFavourites(); }, 1500);
+      }, 4000);
+    }
+
+    function updateFavouriteButton() {
+      const btn = document.getElementById('addToHomeBtn');
+      if (!currentVideoItem) return;
+      btn.textContent = isFavourite(currentVideoItem.type, currentVideoItem.id) ? 'Remove from Favourites' : `Favourite ${currentVideoItem.type === 'tv' ? 'Series' : 'Movie'}`;
+    }
+
+    function updateSeriesFavouriteButton() {
+      const btn = document.getElementById('favouriteSeriesBtn');
+      if (!currentTvId) return;
+      btn.textContent = isFavourite('tv', currentTvId) ? 'Remove from Favourites' : 'Favourite Series';
+    }
+
+    function addToFavourites(type, id, title, poster) {
+      if (getCurrentUser() === 'guest') return alert('Please log in to favourite items');
+      const key = getFavouritesKey();
+      let favs = JSON.parse(localStorage.getItem(key) || '[]');
+      const exists = favs.some(f => f.id === id && f.type === type);
+      if (exists) { favs = favs.filter(f => !(f.id === id && f.type === type)); alert('Removed from favourites'); }
+      else { favs.push({ type, id, title, poster }); alert('Added to favourites'); }
+      localStorage.setItem(key, JSON.stringify(favs));
+      renderFavourites(); updateFavouriteButton();
+      if (type === 'tv') updateSeriesFavouriteButton();
+    }
+
+    function getStreamUrl(type, id, season, episode) {
+      if (currentStreamSource === 'cinemaos') {
+        return type === 'movie' ? `https://cinemaos.tech/player/${id}` : `https://cinemaos.tech/player/${id}/${season||1}/${episode||1}`;
+      }
+      return type === 'movie' ? `https://player.videasy.net/movie/${id}` : `https://player.videasy.net/tv/${id}/${season||1}/${episode||1}`;
+    }
+
+    function showVideo(type, id, title, poster = FALLBACK_POSTER, season = 1, episode = 1) {
+      currentVideoItem = { type, id, title, poster };
+      currentSeason = season; currentEpisode = episode; currentStreamSource = 'videasy';
+      document.getElementById('videoTitle').textContent = title;
+      const player = document.getElementById('videasyPlayer');
+      player.src = getStreamUrl(type, id, season, episode);
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      player.onload = () => { document.getElementById('loadingOverlay').style.display = 'none'; updateSwitchButton(); updateFavouriteButton(); };
+      player.onerror = () => { document.getElementById('loadingOverlay').innerHTML = 'Stream failed to load — try switching provider'; };
+      document.getElementById('videoModal').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      saveToRecent(type, id, title, poster, type === 'tv' ? season : null, type === 'tv' ? episode : null);
+    }
+
+    function updateSwitchButton() {
+      const btn = document.getElementById('switchStreamBtn');
+      btn.style.display = 'block';
+      btn.textContent = currentStreamSource === 'videasy' ? 'Switch to CinemaOS' : 'Switch to Videasy';
+    }
+
+    function toggleStreamSource() {
+      currentStreamSource = currentStreamSource === 'videasy' ? 'cinemaos' : 'videasy';
+      const player = document.getElementById('videasyPlayer');
+      player.src = getStreamUrl(currentVideoItem.type, currentVideoItem.id, currentSeason, currentEpisode);
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      document.getElementById('loadingOverlay').innerHTML = 'Loading stream...';
+      player.onload = () => { document.getElementById('loadingOverlay').style.display = 'none'; updateSwitchButton(); };
+      player.onerror = () => { document.getElementById('loadingOverlay').innerHTML = 'Stream failed — try the other provider'; };
+    }
+
+    function closeVideo() {
+      document.getElementById('videasyPlayer').src = '';
+      document.getElementById('loadingOverlay').style.display = 'none';
+      document.getElementById('videoModal').style.display = 'none';
+      document.body.style.overflow = '';
+      document.getElementById('switchStreamBtn').style.display = 'none';
+    }
+
+    document.getElementById('switchStreamBtn').onclick = toggleStreamSource;
+    document.getElementById('addToHomeBtn').onclick = () => {
+      if (currentVideoItem) addToFavourites(currentVideoItem.type, currentVideoItem.id, currentVideoItem.title, currentVideoItem.poster);
+    };
+
+    async function openEpisodeSelector(id, title, poster = FALLBACK_POSTER) {
+      currentTvId = id; currentTvTitle = title; currentTvPoster = poster;
+      document.getElementById('selectorTitle').textContent = `${title} – Select Season & Episode`;
+      document.getElementById('episodeGrid').innerHTML = '<p>Loading...</p>';
+      document.getElementById('episodeSelectorModal').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      try {
+        const show = await fetchJSON(`${BASE}/tv/${id}?${K}&append_to_response=seasons`);
+        seasonsData = show.seasons.filter(s => s.season_number > 0);
+        const sl = document.getElementById('seasonList'); sl.innerHTML = '';
+        seasonsData.forEach((s, i) => {
+          const btn = document.createElement('button');
+          btn.className = 'season-btn';
+          btn.textContent = `Season ${s.season_number}`;
+          btn.onclick = () => { document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); renderEpisodes(s.season_number); };
+          if (i === 0) { btn.classList.add('active'); renderEpisodes(s.season_number); }
+          sl.appendChild(btn);
+        });
+        document.getElementById('playLatestBtn').onclick = () => {
+          const ls = seasonsData[seasonsData.length - 1];
+          if (ls.episode_count > 0) showVideo('tv', id, `${title} S${ls.season_number}E${ls.episode_count}`, poster, ls.season_number, ls.episode_count);
+        };
+        updateSeriesFavouriteButton();
+        document.getElementById('favouriteSeriesBtn').onclick = () => { addToFavourites('tv', id, title, poster); updateSeriesFavouriteButton(); };
+      } catch(e) { document.getElementById('episodeGrid').innerHTML = '<p>Error loading seasons.</p>'; }
+    }
+
+    function renderEpisodes(sn) {
+      const grid = document.getElementById('episodeGrid'); grid.innerHTML = '';
+      const season = seasonsData.find(s => s.season_number === sn);
+      if (!season || season.episode_count === 0) { grid.innerHTML = '<p>No episodes available</p>'; return; }
+      fetch(`${BASE}/tv/${currentTvId}/season/${sn}?${K}`)
+        .then(r => r.json()).then(d => {
+          d.episodes.forEach(ep => {
+            const c = document.createElement('div'); c.className = 'episode-card';
+            c.innerHTML = `<div class="episode-num">E${ep.episode_number}</div><div class="episode-name">${ep.name||''}</div><div class="episode-air">${ep.air_date||'TBA'}</div>`;
+            c.onclick = () => { showVideo('tv', currentTvId, `${currentTvTitle} S${sn}E${ep.episode_number}`, currentTvPoster, sn, ep.episode_number); closeSelector(); };
+            grid.appendChild(c);
+          });
+        }).catch(() => grid.innerHTML = '<p>Error loading episodes</p>');
+    }
+
+    function closeSelector() { document.getElementById('episodeSelectorModal').style.display = 'none'; document.body.style.overflow = ''; }
+    function showInfoModal() { document.getElementById('infoModal').style.display='flex'; document.body.style.overflow='hidden'; }
+    function closeInfoModal() { document.getElementById('infoModal').style.display='none'; document.body.style.overflow=''; }
+
+    async function performSearch(q) {
+      if (!q.trim()) return;
+      try {
+        const data = await fetchJSON(`${BASE}/search/multi?${K}&query=${encodeURIComponent(q)}&page=1`);
+        const results = data.results.filter(r => r.media_type === 'movie' || r.media_type === 'tv').slice(0, 15)
+          .map(r => ({ title: r.title||r.name, id: r.id, media_type: r.media_type, poster: r.poster_path ? `${POSTER_BASE}${r.poster_path}` : FALLBACK_POSTER }));
+        hideAllTabContent();
+        renderPosters('searchResults', results);
+        document.getElementById('searchResultsRow').style.display = 'block';
+        document.getElementById('searchResultsTitle').textContent = `Search Results for "${q}" (${results.length})`;
+        document.getElementById('searchResultsRow').scrollIntoView({ behavior: 'smooth' });
+        document.querySelectorAll('.navlinks a').forEach(a => a.classList.remove('active'));
+        renderFavourites();
+      } catch(e) { console.error(e); }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateAuthUI();
+      document.getElementById('authButton').onclick = showAuthModal;
+      if (!sessionStorage.getItem('welcomeShown')) {
+        showWelcome();
+        sessionStorage.setItem('welcomeShown', 'true');
+      } else {
+        document.getElementById('welcomeOverlay').style.display = 'none';
+        renderFavourites();
+      }
+      showAll();
+      document.getElementById('searchForm').addEventListener('submit', e => {
+        e.preventDefault();
+        performSearch(document.getElementById('searchInput').value);
+      });
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { closeVideo(); closeSelector(); closeInfoModal(); closeAuthModal(); closeAdWarning(); }
+      });
+    });
+  </script>
+</body>
+</html>
